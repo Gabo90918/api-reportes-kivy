@@ -6,6 +6,12 @@ import os
 app = Flask(__name__)
 DB_NAME = "gestion_reportes.db"
 
+# --- BLOQUE DE RESET (Solo para arreglar el error de la tabla) ---
+if os.path.exists(DB_NAME):
+    os.remove(DB_NAME)
+    print("Base de datos antigua eliminada correctamente")
+# -----------------------------------------------------------------
+
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -17,7 +23,7 @@ def init_db():
             NUM_SERIE TEXT UNIQUE, LF TEXT, STATUS TEXT, CLIENTE TEXT
         )
     ''')
-    # Tabla de Seguimiento (Con los 18 campos necesarios)
+    # Tabla de Seguimiento con los 18 campos corregidos
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS SEGUIMIENTO (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
