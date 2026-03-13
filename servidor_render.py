@@ -4,7 +4,7 @@ import pandas as pd
 import os
 
 app = Flask(__name__)
-DB_NAME = "gestion_reportes.db"
+DB_NAME = "gestion_reportes_v2.db"
 
 # --- BLOQUE DE RESET (Solo para arreglar el error de la tabla) ---
 if os.path.exists(DB_NAME):
@@ -94,3 +94,4 @@ if __name__ == '__main__':
     init_db()
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
+
