@@ -9,7 +9,7 @@ DB_NAME = "gestion_reportes.db"
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    # Tabla INV: Se queda como está (es para lectura de datos)
+    # Tabla de Inventario
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS INV (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -17,7 +17,7 @@ def init_db():
             NUM_SERIE TEXT UNIQUE, LF TEXT, STATUS TEXT, CLIENTE TEXT
         )
     ''')
-    # Tabla SEGUIMIENTO: Ahora tiene todos los campos que envía tu App
+    # Tabla de Seguimiento (Con los 18 campos necesarios)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS SEGUIMIENTO (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,7 +63,6 @@ def enviar_reporte():
 def obtener_inventario():
     try:
         conn = sqlite3.connect(DB_NAME)
-        # Devolvemos los datos para que los menús desplegables de la App funcionen
         df = pd.read_sql_query("SELECT CLIENTE as cliente, SUCURSAL as sucursal, NUM_SERIE as serie, REGION as region FROM INV", conn)
         conn.close()
         return df.to_json(orient='records')
@@ -76,11 +75,12 @@ def descargar_reportes():
         conn = sqlite3.connect(DB_NAME)
         df = pd.read_sql_query("SELECT * FROM SEGUIMIENTO", conn)
         conn.close()
-        if df.empty: return "No hay reportes todavía.", 404
+        if df.empty:
+            return "No hay reportes guardados todavía.", 404
         
-        file_path = "reporte_seguimiento.xlsx"
-        df.to_excel(file_path, index=False, engine='openpyxl')
-        return send_file(file_path, as_attachment=True)
+        excel_file = "reporte_seguimiento.xlsx"
+        df.to_excel(excel_file, index=False, engine='openpyxl')
+        return send_file(excel_file, as_attachment=True)
     except Exception as e:
         return str(e), 500
 
