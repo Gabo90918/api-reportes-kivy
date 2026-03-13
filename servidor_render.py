@@ -62,9 +62,31 @@ def consultar_inv(serie):
     if not df.empty:
         return df.to_json(orient='records')
     return jsonify({"message": "No encontrado"}), 404
+    @app.route('/descargar_reportes', methods=['GET'])
+def descargar_reportes():
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        # Leemos toda la tabla de seguimiento
+        df = pd.read_sql_query("SELECT * FROM SEGUIMIENTO", conn)
+        conn.close()
+
+        if df.empty:
+            return "No hay reportes guardados todavía.", 404
+
+        # Nombre del archivo Excel
+        excel_file = "reporte_seguimiento.xlsx"
+        
+        # Convertimos a Excel usando pandas
+        df.to_excel(excel_file, index=False, engine='openpyxl')
+
+        # Enviamos el archivo al navegador
+        return send_file(excel_file, as_attachment=True)
+    except Exception as e:
+        return str(e), 500
 
 if __name__ == '__main__':
     init_db()
     # Render usa el puerto 10000 por defecto
     port = int(os.environ.get("PORT", 10000))
+
     app.run(host='0.0.0.0', port=port)
