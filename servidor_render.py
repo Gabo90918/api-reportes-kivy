@@ -4,26 +4,13 @@ import pandas as pd
 import os
 
 app = Flask(__name__)
-DB_NAME = "gestion_reportes_v3.db"
+# Usaremos un nombre totalmente nuevo para asegurar limpieza
+DB_NAME = "database_final.db"
 
-# --- BLOQUE DE RESET (Solo para arreglar el error de la tabla) ---
-if os.path.exists(DB_NAME):
-    os.remove(DB_NAME)
-    print("Base de datos antigua eliminada correctamente")
-# -----------------------------------------------------------------
-
-def init_db():
+def crear_tablas_si_no_existen():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    # Tabla de Inventario
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS INV (
-            ID INTEGER PRIMARY KEY AUTOINCREMENT,
-            REGION TEXT, SUCURSAL TEXT, MODELO TEXT,
-            NUM_SERIE TEXT UNIQUE, LF TEXT, STATUS TEXT, CLIENTE TEXT
-        )
-    ''')
-    # Tabla de Seguimiento con los 18 campos corregidos
+    # Tabla SEGUIMIENTO con los 18 campos que tu App necesita
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS SEGUIMIENTO (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,11 +21,39 @@ def init_db():
             FALLA TEXT, SOLUCION TEXT
         )
     ''')
+    # Tabla de Inventario
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS INV (
+            ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            REGION TEXT, SUCURSAL TEXT, MODELO TEXT,
+            NUM_SERIE TEXT UNIQUE, LF TEXT, STATUS TEXT, CLIENTE TEXT
+        )
+    ''')
     conn.commit()
     conn.close()
 
+@app.route('/descargar_reportes', methods=['GET'])
+def descargar_reportes():
+    try:
+        # FORZAMOS la creación de la tabla justo antes de consultar
+        crear_tablas_si_no_existen()
+        
+        conn = sqlite3.connect(DB_NAME)
+        df = pd.read_sql_query("SELECT * FROM SEGUIMIENTO", conn)
+        conn.close()
+
+        if df.empty:
+            return "La base de datos se ha creado con éxito, pero aún no tiene reportes.", 200
+
+        excel_file = "reporte_seguimiento.xlsx"
+        df.to_excel(excel_file, index=False, engine='openpyxl')
+        return send_file(excel_file, as_attachment=True)
+    except Exception as e:
+        return f"Error técnico: {str(e)}", 500
+
 @app.route('/enviar_reporte', methods=['POST'])
 def enviar_reporte():
+    crear_tablas_si_no_existen()
     data = request.json
     try:
         conn = sqlite3.connect(DB_NAME)
@@ -67,6 +82,7 @@ def enviar_reporte():
 
 @app.route('/inventario', methods=['GET'])
 def obtener_inventario():
+    crear_tablas_si_no_existen()
     try:
         conn = sqlite3.connect(DB_NAME)
         df = pd.read_sql_query("SELECT CLIENTE as cliente, SUCURSAL as sucursal, NUM_SERIE as serie, REGION as region FROM INV", conn)
@@ -75,24 +91,6 @@ def obtener_inventario():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/descargar_reportes', methods=['GET'])
-def descargar_reportes():
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        df = pd.read_sql_query("SELECT * FROM SEGUIMIENTO", conn)
-        conn.close()
-        if df.empty:
-            return "No hay reportes guardados todavía.", 404
-        
-        excel_file = "reporte_seguimiento.xlsx"
-        df.to_excel(excel_file, index=False, engine='openpyxl')
-        return send_file(excel_file, as_attachment=True)
-    except Exception as e:
-        return str(e), 500
-
 if __name__ == '__main__':
-    init_db()
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
-
-
