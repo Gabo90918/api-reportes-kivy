@@ -90,7 +90,27 @@ def obtener_inventario():
         return df.to_json(orient='records')
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+@app.route('/enviar_inventario_masivo', methods=['POST'])
+def enviar_inventario_masivo():
+    crear_tablas_si_no_existen()
+    data = request.json  # Aquí recibiremos la lista de equipos
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        # Esto inserta los datos y si la serie ya existe, la actualiza
+        for item in data:
+            cursor.execute('''
+                INSERT OR REPLACE INTO INV (REGION, SUCURSAL, MODELO, NUM_SERIE, LF, STATUS, CLIENTE)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (item['region'], item['sucursal'], item['modelo'], item['serie'], item['lf'], item['status'], item['cliente']))
+        conn.commit()
+        return jsonify({"status": "success", "message": f"{len(data)} equipos cargados"}), 201
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+    finally:
+        conn.close()
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
+
