@@ -9,85 +9,82 @@ DB_NAME = "gestion_reportes.db"
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    # Creamos la tabla INV (Inventario)
+    # Tabla INV: Se queda como está (es para lectura de datos)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS INV (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
-            REGION TEXT,
-            SUCURSAL TEXT,
-            MODELO TEXT,
-            NUM_SERIE TEXT UNIQUE,
-            LF TEXT,
-            STATUS TEXT
+            REGION TEXT, SUCURSAL TEXT, MODELO TEXT,
+            NUM_SERIE TEXT UNIQUE, LF TEXT, STATUS TEXT, CLIENTE TEXT
         )
     ''')
-    # Creamos la tabla SEGUIMIENTO (Reportes)
+    # Tabla SEGUIMIENTO: Ahora tiene todos los campos que envía tu App
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS SEGUIMIENTO (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
-            FECHA TEXT,
-            SERIE TEXT,
-            REPORTE TEXT,
-            TECNICO TEXT,
-            ESTADO TEXT
+            FECHA TEXT, REGION TEXT, ANALISTA TEXT, CLIENTE TEXT,
+            SUCURSAL TEXT, SERIE TEXT, FOLIO TEXT, LLEGADA TEXT,
+            CONTACTO TEXT, CANALIZA TEXT, AREA TEXT, RESP TEXT,
+            REC1 TEXT, REC2 TEXT, SOLUCION_H TEXT, CIERRE TEXT,
+            FALLA TEXT, SOLUCION TEXT
         )
     ''')
     conn.commit()
     conn.close()
 
-# Ruta para recibir los reportes desde tu App de Kivy
 @app.route('/enviar_reporte', methods=['POST'])
 def enviar_reporte():
     data = request.json
     try:
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO SEGUIMIENTO (FECHA, SERIE, REPORTE, TECNICO, ESTADO)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (data['fecha'], data['serie'], data['reporte'], data['tecnico'], data['estado']))
+        query = '''
+            INSERT INTO SEGUIMIENTO (
+                FECHA, REGION, ANALISTA, CLIENTE, SUCURSAL, SERIE, FOLIO, 
+                LLEGADA, CONTACTO, CANALIZA, AREA, RESP, REC1, REC2, 
+                SOLUCION_H, CIERRE, FALLA, SOLUCION
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        '''
+        valores = (
+            data.get('fecha'), data.get('region'), data.get('analista'), data.get('cliente'),
+            data.get('sucursal'), data.get('serie'), data.get('folio'), data.get('llegada'),
+            data.get('contacto'), data.get('canaliza'), data.get('area'), data.get('resp'),
+            data.get('rec1'), data.get('rec2'), data.get('solucion_h'), data.get('cierre'),
+            data.get('falla'), data.get('solucion')
+        )
+        cursor.execute(query, valores)
         conn.commit()
-        return jsonify({"status": "success", "message": "Reporte guardado"}), 201
+        return jsonify({"status": "success"}), 201
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
     finally:
         conn.close()
 
-# Ruta para consultar el inventario (para que la app valide series)
-@app.route('/consultar_inv/<serie>', methods=['GET'])
-def consultar_inv(serie):
-    conn = sqlite3.connect(DB_NAME)
-    df = pd.read_sql_query(f"SELECT * FROM INV WHERE NUM_SERIE = '{serie}'", conn)
-    conn.close()
-    if not df.empty:
+@app.route('/inventario', methods=['GET'])
+def obtener_inventario():
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        # Devolvemos los datos para que los menús desplegables de la App funcionen
+        df = pd.read_sql_query("SELECT CLIENTE as cliente, SUCURSAL as sucursal, NUM_SERIE as serie, REGION as region FROM INV", conn)
+        conn.close()
         return df.to_json(orient='records')
-    return jsonify({"message": "No encontrado"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/descargar_reportes', methods=['GET'])
 def descargar_reportes():
     try:
         conn = sqlite3.connect(DB_NAME)
-        # Leemos toda la tabla de seguimiento
         df = pd.read_sql_query("SELECT * FROM SEGUIMIENTO", conn)
         conn.close()
-
-        if df.empty:
-            return "No hay reportes guardados todavía.", 404
-
-        # Nombre del archivo Excel
-        excel_file = "reporte_seguimiento.xlsx"
+        if df.empty: return "No hay reportes todavía.", 404
         
-        # Convertimos a Excel usando pandas
-        df.to_excel(excel_file, index=False, engine='openpyxl')
-
-        # Enviamos el archivo para que se descargue en tu navegador
-        return send_file(excel_file, as_attachment=True)
+        file_path = "reporte_seguimiento.xlsx"
+        df.to_excel(file_path, index=False, engine='openpyxl')
+        return send_file(file_path, as_attachment=True)
     except Exception as e:
         return str(e), 500
+
 if __name__ == '__main__':
     init_db()
-    # Render usa el puerto 10000 por defecto
     port = int(os.environ.get("PORT", 10000))
-
     app.run(host='0.0.0.0', port=port)
-
-
