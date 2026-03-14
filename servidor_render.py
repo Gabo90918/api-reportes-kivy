@@ -113,7 +113,6 @@ def enviar_inventario_masivo():
 @app.route('/inventario_total', methods=['GET'])
 def inventario_total():
     conn = sqlite3.connect(DB_NAME)
-    # Importante: Asegúrate de que tu tabla se llame INV en mayúsculas
     df = pd.read_sql_query("SELECT * FROM INV", conn)
     conn.close()
     # Esto convierte la tabla de Excel/DB en una lista para la App
