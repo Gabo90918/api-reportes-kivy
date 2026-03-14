@@ -1,16 +1,18 @@
 from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS # Importante para conexión móvil
 import sqlite3
 import pandas as pd
 import os
 
 app = Flask(__name__)
-# Usaremos un nombre totalmente nuevo para asegurar limpieza
+CORS(app) # Permite que tu App de Android se conecte sin bloqueos
+
 DB_NAME = "database_final.db"
 
 def crear_tablas_si_no_existen():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    # Tabla SEGUIMIENTO con los 18 campos que tu App necesita
+    # Tabla SEGUIMIENTO: 18 campos estandarizados
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS SEGUIMIENTO (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,7 +23,7 @@ def crear_tablas_si_no_existen():
             FALLA TEXT, SOLUCION TEXT
         )
     ''')
-    # Tabla de Inventario
+    # Tabla INV: Estructura corregida para el Inventario
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS INV (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,25 +34,13 @@ def crear_tablas_si_no_existen():
     conn.commit()
     conn.close()
 
-@app.route('/descargar_reportes', methods=['GET'])
-def descargar_reportes():
-    try:
-        # FORZAMOS la creación de la tabla justo antes de consultar
-        crear_tablas_si_no_existen()
-        
-        conn = sqlite3.connect(DB_NAME)
-        df = pd.read_sql_query("SELECT * FROM SEGUIMIENTO", conn)
-        conn.close()
+# RUTA DE BIENVENIDA (Para evitar el error 404 en Render)
+@app.route('/')
+def home():
+    crear_tablas_si_no_existen()
+    return "Servidor SeproGuardias Activo - API v1.0", 200
 
-        if df.empty:
-            return "La base de datos se ha creado con éxito, pero aún no tiene reportes.", 200
-
-        excel_file = "reporte_seguimiento.xlsx"
-        df.to_excel(excel_file, index=False, engine='openpyxl')
-        return send_file(excel_file, as_attachment=True)
-    except Exception as e:
-        return f"Error técnico: {str(e)}", 500
-
+# RUTA PARA RECIBIR REPORTES DESDE LA APP
 @app.route('/enviar_reporte', methods=['POST'])
 def enviar_reporte():
     crear_tablas_si_no_existen()
@@ -74,54 +64,64 @@ def enviar_reporte():
         )
         cursor.execute(query, valores)
         conn.commit()
-        return jsonify({"status": "success"}), 201
+        return jsonify({"status": "success", "message": "Reporte guardado"}), 201
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
     finally:
         conn.close()
 
-@app.route('/inventario', methods=['GET'])
-def obtener_inventario():
+# RUTA PARA QUE LA APP DESCARGUE EL INVENTARIO COMPLETO (Optimizada)
+@app.route('/inventario_total', methods=['GET'])
+def inventario_total():
     crear_tablas_si_no_existen()
     try:
         conn = sqlite3.connect(DB_NAME)
-        df = pd.read_sql_query("SELECT CLIENTE as cliente, SUCURSAL as sucursal, NUM_SERIE as serie, REGION as region FROM INV", conn)
+        # Mapeamos los nombres de las columnas para que coincidan con el modelo 'Equipo' de Kotlin
+        df = pd.read_sql_query("SELECT CLIENTE, SUCURSAL, NUM_SERIE, REGION FROM INV", conn)
         conn.close()
         return df.to_json(orient='records')
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# RUTA PARA CARGA MASIVA (Desde Excel o JSON externo)
 @app.route('/enviar_inventario_masivo', methods=['POST'])
 def enviar_inventario_masivo():
     crear_tablas_si_no_existen()
-    data = request.json  # Aquí recibiremos la lista de equipos
+    data = request.json 
     try:
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
-        # Esto inserta los datos y si la serie ya existe, la actualiza
         for item in data:
             cursor.execute('''
                 INSERT OR REPLACE INTO INV (REGION, SUCURSAL, MODELO, NUM_SERIE, LF, STATUS, CLIENTE)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             ''', (item['region'], item['sucursal'], item['modelo'], item['serie'], item['lf'], item['status'], item['cliente']))
         conn.commit()
-        return jsonify({"status": "success", "message": f"{len(data)} equipos cargados"}), 201
+        return jsonify({"status": "success", "message": f"{len(data)} equipos actualizados"}), 201
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
     finally:
         conn.close()
-#Inventario total
-@app.route('/inventario_total', methods=['GET'])
-def inventario_total():
-    conn = sqlite3.connect(DB_NAME)
-    df = pd.read_sql_query("SELECT * FROM INV", conn)
-    conn.close()
-    # Esto convierte la tabla de Excel/DB en una lista para la App
-    return df.to_json(orient='records')
+
+# RUTA PARA DESCARGAR EXCEL DE SEGUIMIENTO
+@app.route('/descargar_reportes', methods=['GET'])
+def descargar_reportes():
+    try:
+        crear_tablas_si_no_existen()
+        conn = sqlite3.connect(DB_NAME)
+        df = pd.read_sql_query("SELECT * FROM SEGUIMIENTO", conn)
+        conn.close()
+
+        if df.empty:
+            return "No hay reportes para exportar.", 200
+
+        excel_file = "reporte_seguimiento.xlsx"
+        df.to_excel(excel_file, index=False, engine='openpyxl')
+        return send_file(excel_file, as_attachment=True)
+    except Exception as e:
+        return f"Error técnico: {str(e)}", 500
 
 if __name__ == '__main__':
-    # ... resto de tu código
-
-if __name__ == '__main__':
+    crear_tablas_si_no_existen()
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
-
